@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bybit Trading Bot Dashboard v2</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+
+      .header {
+        background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+      }
+
+      .header h1 {
+        font-size: 2.5em;
+        margin-bottom: 10px;
+        font-weight: 300;
+      }
+
+      .header p {
+        font-size: 1.1em;
+        opacity: 0.9;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 20px;
+        padding: 30px;
+        background: #f8f9fa;
+      }
+
+      .status-card {
+        background: white;
+        padding: 25px;
+        border-radius: 12px;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+        text-align: center;
+        transition: transform 0.3s ease;
+      }
+
+      .status-card:hover {
+        transform: translateY(-5px);
+      }
+
+      .status-card h3 {
+        color: #2c3e50;
+        margin-bottom: 15px;
+        font-size: 1.1em;
+        font-weight: 600;
+      }
+
+      .status-value {
+        font-size: 2em;
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+
+      .status-running {
+        color: #27ae60;
+      }
+
+      .status-stopped {
+        color: #e74c3c;
+      }
+
+      .status-flat {
+        color: #95a5a6;
+      }
+
+      .status-long {
+        color: #27ae60;
+      }
+
+      .status-short {
+        color: #e74c3c;
+      }
+
+      .subtitle {
+        font-size: 0.9em;
+        color: #7f8c8d;
+        margin-top: 5px;
+      }
+
+      .percentage-positive {
+        color: #27ae60;
+      }
+
+      .percentage-negative {
+        color: #e74c3c;
+      }
+
+      .transactions {
+        padding: 30px;
+      }
+
+      .transactions h2 {
+        margin-bottom: 20px;
+        color: #333;
+      }
+
+      .transaction-table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white;
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+      }
+
+      .transaction-table th,
+      .transaction-table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #eee;
+      }
+
+      .transaction-table th {
+        background: #f8f9fa;
+        font-weight: bold;
+        color: #555;
+      }
+
+      .transaction-table tr:hover {
+        background: #f8f9fa;
+      }
+
+      .signal-buy {
+        background: #d4edda;
+        color: #155724;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: bold;
+      }
+
+      .signal-sell {
+        background: #f8d7da;
+        color: #721c24;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: bold;
+      }
+
+      .signal-close_long {
+        background: #fff3cd;
+        color: #856404;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: bold;
+      }
+
+      .signal-close_short {
+        background: #fff3cd;
+        color: #856404;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: bold;
+      }
+
+      .signal-stop_loss {
+        background: #f8d7da;
+        color: #721c24;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: bold;
+      }
+
+      .signal-take_profit {
+        background: #d4edda;
+        color: #155724;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-weight: bold;
+      }
+
+      .percentage {
+        font-weight: bold;
+        font-size: 0.9em;
+      }
+
+      .percentage-positive {
+        color: #28a745;
+      }
+
+      .percentage-negative {
+        color: #dc3545;
+      }
+      
+      .money-used {
+        font-weight: bold;
+        color: #2c3e50;
+        background-color: #ecf0f1;
+        border-radius: 4px;
+        padding: 2px 6px;
+      }
+
+      .trade-details {
+        font-size: 0.85em;
+        color: #666;
+        margin-top: 5px;
+      }
+
+      .sma-indicators {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+        justify-content: center;
+      }
+
+      .sma-value {
+        background: #f8f9fa;
+        padding: 5px 10px;
+        border-radius: 5px;
+        font-size: 0.8em;
+      }
+
+      .no-transactions {
+        text-align: center;
+        color: #7f8c8d;
+        font-style: italic;
+        padding: 40px;
+      }
+
+      .pnl-positive {
+        color: #27ae60;
+      }
+
+      .pnl-negative {
+        color: #e74c3c;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🤖 Bybit Trading Bot Dashboard v2</h1>
+        <p>Real-time monitoring of SMA Crossover Strategy with Money Tracking</p>
+      </div>
+
+      <div class="status-grid">
+        <div class="status-card">
+          <h3>Bot Status</h3>
+          <div id="bot-status" class="status-value status-stopped">Loading...</div>
+        </div>
+
+        <div class="status-card">
+          <h3>Current Position</h3>
+          <div id="current-position" class="status-value status-flat">Loading...</div>
+        </div>
+
+        <div class="status-card">
+          <h3>Equity (USDT)</h3>
+          <div id="equity" class="status-value">$0.00</div>
+        </div>
+
+        <div class="status-card">
+          <h3>Daily P&L</h3>
+          <div id="daily-pnl" class="status-value">$0.00</div>
+          <div id="daily-pnl-pct" class="subtitle">0.00%</div>
+        </div>
+
+        <div class="status-card">
+          <h3>Last Signal</h3>
+          <div id="last-signal" class="status-value">None</div>
+          <div id="signal-time" class="subtitle">No recent signals</div>
+        </div>
+
+        <div class="status-card">
+          <h3>SMA Indicators</h3>
+          <div id="sma-fast" class="sma-value">SMA5: Loading...</div>
+          <div id="sma-slow" class="sma-value">SMA20: Loading...</div>
+        </div>
+      </div>
+
+      <div class="transactions">
+        <h2>📊 Recent Transactions</h2>
+        <div id="transactions-container">
+          <div class="no-transactions">Loading transactions...</div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function updateStatus() {
+        fetch("/api/status")
+          .then((response) => response.json())
+          .then((data) => {
+            // Update bot status
+            const statusElement = document.getElementById("bot-status");
+            statusElement.textContent = data.status || "unknown";
+            statusElement.className = `status-value ${
+              data.status === "running" ? "status-running" : "status-stopped"
+            }`;
+
+            // Update position
+            const positionElement = document.getElementById("current-position");
+            positionElement.textContent = data.current_position || "flat";
+            positionElement.className = `status-value ${
+              data.current_position === "long"
+                ? "status-long"
+                : data.current_position === "short"
+                ? "status-short"
+                : "status-flat"
+            }`;
+
+            // Update equity
+            document.getElementById("equity").textContent = `$${(
+              data.equity || 0
+            ).toFixed(2)}`;
+
+            // Update daily P&L
+            const pnlValue = data.daily_pnl || 0;
+            const pnlElement = document.getElementById("daily-pnl");
+            pnlElement.textContent = `$${pnlValue.toFixed(2)}`;
+            pnlElement.className = `status-value ${
+              pnlValue >= 0 ? "status-running" : "status-stopped"
+            }`;
+
+            // Update last signal
+            document.getElementById("last-signal").textContent =
+              data.last_signal || "None";
+
+            // Calculate daily P&L percentage
+            const startEquity = parseFloat(
+              data.daily_start_equity || data.equity || 1000
+            );
+            const pnlPct = startEquity > 0 ? (pnlValue / startEquity) * 100 : 0;
+            const pnlPctElement = document.getElementById("daily-pnl-pct");
+            pnlPctElement.textContent = `${pnlPct.toFixed(2)}%`;
+            pnlPctElement.className = `subtitle ${
+              pnlPct >= 0 ? "percentage-positive" : "percentage-negative"
+            }`;
+
+            // Update signal time
+            const signalTimeElement = document.getElementById("signal-time");
+            if (data.last_signal_time) {
+              const signalTime = new Date(
+                data.last_signal_time
+              ).toLocaleString();
+              signalTimeElement.textContent = signalTime;
+            } else {
+              signalTimeElement.textContent = "No recent signals";
+            }
+
+            // Update SMA indicators
+            if (data.sma_fast && data.sma_slow) {
+              document.getElementById(
+                "sma-fast"
+              ).textContent = `SMA5: $${data.sma_fast.toFixed(2)}`;
+              document.getElementById(
+                "sma-slow"
+              ).textContent = `SMA20: $${data.sma_slow.toFixed(2)}`;
+            }
+          })
+          .catch((error) => {
+            console.error("Error fetching status:", error);
+          });
+      }
+
+      function updateTransactions() {
+        fetch("/api/transactions")
+          .then((response) => response.json())
+          .then((data) => {
+            const container = document.getElementById("transactions-container");
+
+            if (data.transactions.length === 0) {
+              container.innerHTML =
+                '<div class="no-transactions">No transactions yet</div>';
+              return;
+            }
+
+            let html = `
+                        <table class="transaction-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Signal</th>
+                                    <th>Side</th>
+                               <th>Price</th>
+                               <th>Size</th>
+                               <th>Trade Value</th>
+                               <th>Your Money Used</th>
+                               <th>P&L</th>
+                               <th>P&L %</th>
+                               <th>SL/TP</th>
+                               <th>Order ID</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+
+            data.transactions
+              .slice(-20)
+              .reverse()
+              .forEach((tx) => {
+                const time = new Date(tx.timestamp).toLocaleString();
+                const signalClass = `signal-${tx.signal}`;
+                const pnl = parseFloat(tx.pnl_usdt || 0);
+                const pnlClass = pnl >= 0 ? "pnl-positive" : "pnl-negative";
+                const price = parseFloat(tx.executed_price || 0);
+                const size = parseFloat(tx.executed_size || 0);
+                const tradeValue = parseFloat(tx.trade_value_usd || 0);
+                const sl = parseFloat(tx.stop_loss || 0);
+                const tp = parseFloat(tx.take_profit || 0);
+
+                // Calculate money used from your account
+                // If trade_value_usd is not available, calculate it from price * size
+                const moneyUsed = tradeValue > 0 ? tradeValue : (price * size);
+
+                // Calculate P&L percentage
+                let pnlPct = 0;
+                if (pnl !== 0 && moneyUsed > 0) {
+                  pnlPct = (pnl / moneyUsed) * 100;
+                }
+
+                // Format SL/TP
+                let slTpText = "-";
+                if (sl > 0 && tp > 0) {
+                  slTpText = `SL: $${sl.toFixed(2)}<br/>TP: $${tp.toFixed(2)}`;
+                }
+
+                html += `
+                                             <tr>
+                                                 <td>${time}</td>
+                                                 <td><span class="${signalClass}">${
+                  tx.signal
+                }</span></td>
+                                                 <td>${tx.side}</td>
+                                                 <td>$${price.toFixed(2)}</td>
+                                                 <td>${size.toFixed(6)}</td>
+                                                <td>$${moneyUsed.toFixed(2)}</td>
+                                                <td class="money-used">$${moneyUsed.toFixed(2)}</td>
+                                                 <td class="${pnlClass}">${
+                  pnl !== 0 ? `$${pnl.toFixed(2)}` : "-"
+                }</td>
+                                                 <td class="${pnlClass}">${
+                  pnlPct !== 0 ? `${pnlPct.toFixed(2)}%` : "-"
+                }</td>
+                                                 <td>${slTpText}</td>
+                                                 <td>${tx.order_id || "-"}</td>
+                                             </tr>
+                                         `;
+              });
+
+            html += "</tbody></table>";
+            container.innerHTML = html;
+          })
+          .catch((error) => {
+            console.error("Error fetching transactions:", error);
+          });
+      }
+
+      // Update every 2 seconds
+      setInterval(updateStatus, 2000);
+      setInterval(updateTransactions, 2000);
+
+      // Initial load
+      updateStatus();
+      updateTransactions();
+    </script>
+  </body>
+</html>
