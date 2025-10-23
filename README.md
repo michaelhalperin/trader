@@ -1,6 +1,6 @@
-# Bybit Testnet Unified Trading Bot with Web UI
+# AI-Powered Multi-Coin Trading Bot with Dashboard
 
-A Python trading bot with real-time web dashboard for BTC/USDT on Bybit testnet using SMA crossover strategy.
+An advanced AI-powered trading bot with real-time web dashboard for multiple cryptocurrencies on Bybit testnet using intelligent technical analysis and position sizing.
 
 ## 🚀 Features
 
@@ -29,33 +29,38 @@ A Python trading bot with real-time web dashboard for BTC/USDT on Bybit testnet 
 ## 🛠️ Requirements
 
 ```bash
-pip install ccxt pandas ta websocket-client python-dotenv flask requests
+pip install -r requirements.txt
 ```
 
 ## ⚙️ Setup
 
-1. **API Keys**: Edit `api_keys.env` with your Bybit testnet credentials
-2. **Configuration**: Adjust `config.json` for strategy parameters
+1. **Environment Variables**: Copy `.env` file and update with your API keys:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your actual API keys
+   ```
+
+2. **API Keys**: Update `.env` file with your Bybit testnet credentials
 3. **Testnet Funds**: Ensure you have USDT in your testnet derivatives wallet
 
 ## 🚀 Running the Bot
 
-### Option 1: Bot with Web UI (Recommended)
+### Option 1: AI System with Dashboard (Recommended)
 ```bash
-python3 run_bot_with_ui.py
+python3 run_ai_system.py
 ```
-- Opens web dashboard at: http://127.0.0.1:5000
-- Runs bot and UI together
+- Opens AI dashboard at: http://127.0.0.1:5001
+- Runs AI bot and dashboard together
 - Press Ctrl+C to stop both
 
-### Option 2: Bot Only
+### Option 2: AI Bot Only
 ```bash
-python3 bybit_bot.py
+python3 ai_trading_bot.py
 ```
 
-### Option 3: Web UI Only
+### Option 3: Dashboard Only
 ```bash
-python3 web_ui.py
+python3 ai_dashboard.py
 ```
 
 ## 📈 Understanding the Dashboard
@@ -100,13 +105,13 @@ Edit `config.json`:
 
 ## 📁 Files
 
-- `bybit_bot.py` - Main trading bot
-- `web_ui.py` - Web dashboard server
-- `templates/dashboard.html` - Dashboard UI
-- `config.json` - Bot configuration
-- `api_keys.env` - API credentials
-- `trades.csv` - Transaction log
-- `run_bot_with_ui.py` - Combined launcher
+- `ai_trading_bot.py` - AI-powered trading bot
+- `ai_dashboard.py` - AI dashboard server
+- `templates/ai_dashboard.html` - AI dashboard UI
+- `run_ai_system.py` - Combined launcher
+- `.env` - Environment variables (API keys, configuration)
+- `requirements.txt` - Python dependencies
+- `.gitignore` - Git ignore file for sensitive data
 
 ## 🔒 Safety Notes
 

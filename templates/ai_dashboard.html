@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      http-equiv="Cache-Control"
+      content="no-cache, no-store, must-revalidate"
+    />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>🧠 AI Trading Bot Dashboard</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: #333;
+        min-height: 100vh;
+      }
+
+      .container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 30px;
+        color: white;
+      }
+
+      .header h1 {
+        font-size: 2.5em;
+        margin-bottom: 10px;
+        text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.3);
+      }
+
+      .header p {
+        font-size: 1.2em;
+        opacity: 0.9;
+      }
+
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 30px;
+      }
+
+      .card {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        transition: transform 0.3s ease;
+      }
+
+      .card:hover {
+        transform: translateY(-5px);
+      }
+
+      .status-card {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+      }
+
+      .ai-analysis-card {
+        background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        color: white;
+      }
+
+      .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+      }
+
+      .metric {
+        background: rgba(255, 255, 255, 0.1);
+        padding: 15px;
+        border-radius: 10px;
+        text-align: center;
+      }
+
+      .metric-value {
+        font-size: 1.8em;
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+
+      .metric-label {
+        font-size: 0.9em;
+        opacity: 0.8;
+      }
+
+      .ai-decisions {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+      }
+
+      .decision-item {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-left: 4px solid #007bff;
+      }
+
+      .decision-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+
+      .symbol {
+        font-weight: bold;
+        font-size: 1.1em;
+      }
+
+      .action {
+        padding: 5px 15px;
+        border-radius: 20px;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+
+      .action.buy {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .action.sell {
+        background: #f8d7da;
+        color: #721c24;
+      }
+
+      .action.hold {
+        background: #e2e3e5;
+        color: #383d41;
+      }
+
+      .confidence-bar {
+        width: 100%;
+        height: 8px;
+        background: #e9ecef;
+        border-radius: 4px;
+        overflow: hidden;
+        margin: 10px 0;
+      }
+
+      .confidence-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #dc3545, #ffc107, #28a745);
+        transition: width 0.3s ease;
+      }
+
+      .decision-details {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 10px;
+        font-size: 0.9em;
+      }
+
+      .detail-item {
+        background: white;
+        padding: 8px;
+        border-radius: 5px;
+        text-align: center;
+      }
+
+      .detail-label {
+        font-size: 0.8em;
+        color: #666;
+        margin-bottom: 2px;
+      }
+
+      .detail-value {
+        font-weight: bold;
+        color: #333;
+      }
+
+      .reasoning {
+        background: #e3f2fd;
+        padding: 10px;
+        border-radius: 5px;
+        margin-top: 10px;
+        font-size: 0.9em;
+        color: #1976d2;
+      }
+
+      .market-regime {
+        display: inline-block;
+        padding: 5px 10px;
+        border-radius: 15px;
+        font-size: 0.8em;
+        font-weight: bold;
+        text-transform: uppercase;
+      }
+
+      .regime-bull {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .regime-bear {
+        background: #f8d7da;
+        color: #721c24;
+      }
+
+      .regime-sideways {
+        background: #e2e3e5;
+        color: #383d41;
+      }
+
+      .regime-volatile {
+        background: #fff3cd;
+        color: #856404;
+      }
+
+      .loading {
+        text-align: center;
+        padding: 50px;
+        color: #666;
+      }
+
+      .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #3498db;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 2s linear infinite;
+        margin: 0 auto 20px;
+      }
+
+      @keyframes spin {
+        0% {
+          transform: rotate(0deg);
+        }
+        100% {
+          transform: rotate(360deg);
+        }
+      }
+
+      .no-data {
+        text-align: center;
+        padding: 50px;
+        color: #666;
+        font-style: italic;
+      }
+
+      .timestamp {
+        font-size: 0.8em;
+        color: #666;
+        margin-top: 5px;
+      }
+
+      .status-indicator {
+        display: inline-block;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+
+      .status-running {
+        background: #28a745;
+        animation: pulse 2s infinite;
+      }
+
+      .status-stopped {
+        background: #dc3545;
+      }
+
+      @keyframes pulse {
+        0% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.5;
+        }
+        100% {
+          opacity: 1;
+        }
+      }
+
+      .refresh-btn {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 5px;
+        cursor: pointer;
+        margin: 10px;
+      }
+
+      .refresh-btn:hover {
+        background: #0056b3;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>🧠 AI Trading Bot Dashboard</h1>
+        <p>Real-time monitoring of AI-powered trading decisions with 190 IQ</p>
+      </div>
+
+      <div class="dashboard-grid">
+        <div class="card status-card">
+          <h2>🤖 Bot Status</h2>
+          <div class="metrics-grid">
+            <div class="metric">
+              <div class="metric-value" id="status">
+                <span class="status-indicator" id="status-indicator"></span>
+                <span id="status-text">Loading...</span>
+              </div>
+              <div class="metric-label">Status</div>
+            </div>
+            <div class="metric">
+              <div class="metric-value" id="equity">$0.00</div>
+              <div class="metric-label">Total Equity</div>
+            </div>
+            <div class="metric">
+              <div class="metric-value" id="daily-pnl">$0.00</div>
+              <div class="metric-label">Daily P&L</div>
+            </div>
+            <div class="metric">
+              <div class="metric-value" id="confidence">0%</div>
+              <div class="metric-label">AI Confidence</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card ai-analysis-card">
+          <h2>🧠 AI Analysis</h2>
+          <div class="metrics-grid">
+            <div class="metric">
+              <div class="metric-value" id="market-regime">Sideways</div>
+              <div class="metric-label">Market Regime</div>
+            </div>
+            <div class="metric">
+              <div class="metric-value" id="active-trades">0</div>
+              <div class="metric-label">Active Trades</div>
+            </div>
+            <div class="metric">
+              <div class="metric-value" id="total-coins">4</div>
+              <div class="metric-label">Coins Monitored</div>
+            </div>
+            <div class="metric">
+              <div class="metric-value" id="last-update">Never</div>
+              <div class="metric-label">Last Update</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ai-decisions">
+        <h2>🎯 AI Trading Decisions</h2>
+        <button class="refresh-btn" onclick="refreshData()">🔄 Refresh</button>
+        <div id="decisions-container">
+          <div class="loading">
+            <div class="spinner"></div>
+            <p>Loading AI decisions...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      let botData = {};
+
+      function updateDashboard() {
+        // Update status
+        const statusText = document.getElementById("status-text");
+        const statusIndicator = document.getElementById("status-indicator");
+        const status = botData.status || "stopped";
+
+        statusText.textContent =
+          status.charAt(0).toUpperCase() + status.slice(1);
+        statusIndicator.className = `status-indicator status-${status}`;
+
+        // Update metrics
+        document.getElementById("equity").textContent = `$${(
+          botData.equity || 0
+        ).toFixed(2)}`;
+        document.getElementById("daily-pnl").textContent = `$${(
+          botData.daily_pnl || 0
+        ).toFixed(2)}`;
+        document.getElementById("confidence").textContent = `${Math.round(
+          (botData.confidence_level || 0) * 100
+        )}%`;
+        document.getElementById("market-regime").textContent =
+          (botData.market_regime || "sideways").charAt(0).toUpperCase() +
+          (botData.market_regime || "sideways").slice(1);
+        document.getElementById("active-trades").textContent =
+          botData.active_trades || 0;
+        document.getElementById("total-coins").textContent =
+          botData.total_coins || 4;
+
+        // Update last update time
+        if (botData.last_update) {
+          const updateTime = new Date(botData.last_update);
+          document.getElementById("last-update").textContent =
+            updateTime.toLocaleTimeString();
+        }
+
+        // Update decisions
+        updateDecisions();
+      }
+
+      function updateDecisions() {
+        const container = document.getElementById("decisions-container");
+
+        if (!botData.ai_analysis || botData.ai_analysis.length === 0) {
+          container.innerHTML =
+            '<div class="no-data">No AI analysis available yet...</div>';
+          return;
+        }
+
+        let html = "";
+        botData.ai_analysis.forEach((analysis) => {
+          const confidence = Math.round((analysis.confidence || 0) * 100);
+          const action = analysis.action || "HOLD";
+          const symbol = analysis.symbol || "Unknown";
+
+          html += `
+                    <div class="decision-item">
+                        <div class="decision-header">
+                            <span class="symbol">${symbol}</span>
+                            <span class="action ${action.toLowerCase()}">${action}</span>
+                        </div>
+                        
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" style="width: ${confidence}%"></div>
+                        </div>
+                        
+                        <div class="decision-details">
+                            <div class="detail-item">
+                                <div class="detail-label">Confidence</div>
+                                <div class="detail-value">${confidence}%</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Position Size</div>
+                                <div class="detail-value">$${(
+                                  analysis.position_size_usd || 0
+                                ).toFixed(2)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Stop Loss</div>
+                                <div class="detail-value">$${(
+                                  analysis.stop_loss || 0
+                                ).toFixed(2)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Take Profit</div>
+                                <div class="detail-value">$${(
+                                  analysis.take_profit || 0
+                                ).toFixed(2)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Risk/Reward</div>
+                                <div class="detail-value">${(
+                                  analysis.risk_reward_ratio || 0
+                                ).toFixed(2)}</div>
+                            </div>
+                            <div class="detail-item">
+                                <div class="detail-label">Market Regime</div>
+                                <div class="detail-value">
+                                    <span class="market-regime regime-${(
+                                      analysis.market_regime || "sideways"
+                                    ).toLowerCase()}">
+                                        ${(
+                                          analysis.market_regime || "sideways"
+                                        ).toUpperCase()}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        ${
+                          analysis.reasoning
+                            ? `<div class="reasoning">🧠 <strong>AI Reasoning:</strong> ${analysis.reasoning}</div>`
+                            : ""
+                        }
+                        
+                        <div class="timestamp">
+                            Last updated: ${new Date().toLocaleString()}
+                        </div>
+                    </div>
+                `;
+        });
+
+        container.innerHTML = html;
+      }
+
+      function fetchBotData() {
+        fetch("/api/status")
+          .then((response) => response.json())
+          .then((data) => {
+            botData = data;
+            updateDashboard();
+          })
+          .catch((error) => {
+            console.error("Error fetching bot data:", error);
+            document.getElementById("decisions-container").innerHTML =
+              '<div class="no-data">❌ Error connecting to AI bot. Make sure it\'s running.</div>';
+          });
+      }
+
+      function refreshData() {
+        fetchBotData();
+      }
+
+      // Initial load and periodic updates
+      fetchBotData();
+      setInterval(fetchBotData, 5000); // Update every 5 seconds
+
+      // Auto-refresh page every 30 seconds to prevent stale data
+      setTimeout(() => {
+        location.reload();
+      }, 30000);
+    </script>
+  </body>
+</html>
