@@ -53,17 +53,32 @@ class TradingDecision:
     risk_reward_ratio: float
     market_regime: MarketRegime
     signal_strength: SignalStrength
+    volatility: float = 0.02  # Default volatility
 
 class AITradingBot:
     def __init__(self):
         self.exchange = None
         self.config = self.load_config()
-        self.positions = {}
+        self.positions = {}  # Track open positions: {symbol: {quantity, avg_price, entry_time, stop_loss, take_profit}}
         self.daily_pnl = 0.0
         self.start_equity = 0.0
         self.market_regime = MarketRegime.SIDEWAYS
         self.ai_analysis = []
         self.recent_decisions = []
+        self.position_history = []  # Track all trades for analysis
+        self.daily_start_balance = 0.0  # Track daily starting balance
+        self.daily_trades = []  # Track today's trades
+        self.performance_stats = {
+            'total_trades': 0,
+            'winning_trades': 0,
+            'losing_trades': 0,
+            'total_pnl': 0.0,
+            'max_drawdown': 0.0,
+            'win_rate': 0.0,
+            'avg_win': 0.0,
+            'avg_loss': 0.0,
+            'profit_factor': 0.0
+        }
         
     def load_config(self):
         """Load AI-enhanced configuration"""
@@ -79,6 +94,11 @@ class AITradingBot:
                 "max_position_size_pct": float(os.getenv("MAX_POSITION_SIZE_PCT", "0.15")),  # Max 15% of portfolio per trade
                 "min_position_size_pct": float(os.getenv("MIN_POSITION_SIZE_PCT", "0.02")),  # Min 2% of portfolio per trade
                 "volatility_adjustment": True,
+                "base_profit_target_pct": float(os.getenv("BASE_PROFIT_TARGET_PCT", "0.03")),  # Base 3% profit target
+                "base_stop_loss_pct": float(os.getenv("BASE_STOP_LOSS_PCT", "0.02")),  # Base 2% stop loss
+                "max_positions_per_coin": int(os.getenv("MAX_POSITIONS_PER_COIN", "2")),  # Max 2 positions per coin
+                "max_total_exposure_pct": float(os.getenv("MAX_TOTAL_EXPOSURE_PCT", "0.8")),  # Max 80% of account in positions
+                "max_daily_loss_pct": float(os.getenv("MAX_DAILY_LOSS_PCT", "0.05")),  # Max 5% daily loss
                 "correlation_limit": 0.7,
                 "trend_strength_weight": 0.3,
                 "volume_weight": 0.2,
@@ -140,6 +160,17 @@ class AITradingBot:
             balance_info = self.fetch_account_balance()
             if balance_info:
                 update_data.update(balance_info)
+            
+            # Add position information and performance stats
+            update_data.update({
+                'active_trades': len(self.positions),
+                'positions': self.positions,
+                'daily_pnl': self.daily_pnl,
+                'position_history': self.position_history[-10:],  # Last 10 trades
+                'performance_stats': self.performance_stats,
+                'total_exposure_pct': self.calculate_total_exposure() * 100,
+                'daily_loss_pct': self.calculate_daily_loss_pct()
+            })
             
             requests.post('http://127.0.0.1:5001/api/update', 
                          json=update_data, 
@@ -525,15 +556,385 @@ class AITradingBot:
                 reasoning="; ".join(reasoning_parts),
                 risk_reward_ratio=risk_reward_ratio,
                 market_regime=market_regime,
-                signal_strength=signal_strength
+                signal_strength=signal_strength,
+                volatility=volatility
             )
             
         except Exception as e:
             LOGGER.error("Error in AI analysis for %s: %s", symbol, e)
             return None
     
+    def calculate_dynamic_targets(self, symbol: str, confidence: float, volatility: float, 
+                                 market_regime: MarketRegime, risk_reward_ratio: float) -> Tuple[float, float]:
+        """Calculate dynamic profit target and stop-loss based on trade characteristics"""
+        
+        # Base targets
+        base_profit = self.config['ai_parameters']['base_profit_target_pct']
+        base_stop = self.config['ai_parameters']['base_stop_loss_pct']
+        
+        # Confidence multiplier (higher confidence = higher targets)
+        confidence_multiplier = 0.5 + (confidence * 1.5)  # 0.5 to 2.0 range
+        
+        # Volatility adjustment (higher volatility = wider targets)
+        volatility_multiplier = 0.8 + (volatility * 2.0)  # 0.8 to 2.8 range
+        
+        # Market regime adjustment
+        regime_multiplier = {
+            MarketRegime.BULL: 1.3,      # Higher targets in bull market
+            MarketRegime.BEAR: 0.7,      # Lower targets in bear market
+            MarketRegime.SIDEWAYS: 1.0,  # Normal targets in sideways
+            MarketRegime.VOLATILE: 1.2   # Slightly higher in volatile
+        }.get(market_regime, 1.0)
+        
+        # Risk/reward ratio adjustment (better ratios = higher targets)
+        risk_reward_multiplier = min(1.5, max(0.5, risk_reward_ratio / 2.0))
+        
+        # Calculate dynamic targets
+        profit_target = base_profit * confidence_multiplier * volatility_multiplier * regime_multiplier * risk_reward_multiplier
+        stop_loss = base_stop * confidence_multiplier * volatility_multiplier * regime_multiplier
+        
+        # Apply reasonable limits
+        profit_target = min(0.15, max(0.02, profit_target))  # 2% to 15% range
+        stop_loss = min(0.08, max(0.01, stop_loss))          # 1% to 8% range
+        
+        # Ensure profit target is higher than stop loss
+        if profit_target <= stop_loss:
+            profit_target = stop_loss * 1.5
+        
+        return profit_target, stop_loss
+    
+    def check_profit_taking(self, symbol: str, current_price: float) -> bool:
+        """Check if we should take profit on existing positions using dynamic targets"""
+        if symbol not in self.positions:
+            return False
+        
+        position = self.positions[symbol]
+        entry_price = position['avg_price']
+        profit_pct = (current_price - entry_price) / entry_price
+        
+        # Use the position's specific profit target (stored when position was created)
+        profit_target = position.get('profit_target_pct', self.config['ai_parameters']['base_profit_target_pct'])
+        
+        # Take profit if we've reached our dynamic target
+        if profit_pct >= profit_target:
+            LOGGER.info("💰 DYNAMIC PROFIT TARGET REACHED: %s - %.2f%% profit (Target: %.2f%%, Entry: $%.2f, Current: $%.2f)", 
+                       symbol, profit_pct * 100, profit_target * 100, entry_price, current_price)
+            return True
+        
+        return False
+    
+    def check_stop_loss(self, symbol: str, current_price: float) -> bool:
+        """Check if we should stop loss on existing positions using dynamic targets"""
+        if symbol not in self.positions:
+            return False
+        
+        position = self.positions[symbol]
+        entry_price = position['avg_price']
+        loss_pct = (entry_price - current_price) / entry_price
+        
+        # Use the position's specific stop loss (stored when position was created)
+        stop_loss = position.get('stop_loss_pct', self.config['ai_parameters']['base_stop_loss_pct'])
+        
+        # Stop loss if we've hit our dynamic limit
+        if loss_pct >= stop_loss:
+            LOGGER.info("🛑 DYNAMIC STOP LOSS TRIGGERED: %s - %.2f%% loss (Stop: %.2f%%, Entry: $%.2f, Current: $%.2f)", 
+                       symbol, loss_pct * 100, stop_loss * 100, entry_price, current_price)
+            return True
+        
+        return False
+    
+    def calculate_total_exposure(self) -> float:
+        """Calculate total exposure as percentage of account"""
+        try:
+            if not self.positions:
+                return 0.0
+            
+            total_exposure = 0.0
+            for position in self.positions.values():
+                if 'quantity' in position and 'avg_price' in position:
+                    position_value = position['quantity'] * position['avg_price']
+                    total_exposure += position_value
+            
+            # Get current account balance
+            balance_info = self.fetch_account_balance()
+            if balance_info and balance_info.get('equity', 0) > 0:
+                return total_exposure / balance_info['equity']
+            return 0.0
+        except Exception as e:
+            LOGGER.error("Error calculating total exposure: %s", e)
+            return 0.0  # Return 0 if there's an error
+    
+    def check_daily_loss_limit(self) -> bool:
+        """Check if daily loss limit has been exceeded"""
+        if self.daily_start_balance <= 0:
+            return False
+        
+        current_balance = self.fetch_account_balance()
+        if not current_balance or current_balance.get('equity', 0) <= 0:
+            return False
+        
+        daily_loss_pct = (self.daily_start_balance - current_balance['equity']) / self.daily_start_balance
+        max_daily_loss = self.config['ai_parameters']['max_daily_loss_pct']
+        
+        if daily_loss_pct >= max_daily_loss:
+            LOGGER.warning("🛑 DAILY LOSS LIMIT EXCEEDED: %.2f%% loss (Limit: %.2f%%) - Stopping trading", 
+                          daily_loss_pct * 100, max_daily_loss * 100)
+            return True
+        
+        return False
+    
+    def can_open_new_position(self, symbol: str) -> bool:
+        """Check if we can open a new position for this symbol with portfolio risk management"""
+        try:
+            # Check if exchange is connected
+            if not self.exchange:
+                LOGGER.warning("⚠️ No exchange connection - Cannot open new position")
+                return False
+            
+            # Check daily loss limit first
+            if self.check_daily_loss_limit():
+                return False
+            
+            # Count existing positions for this symbol
+            position_count = sum(1 for pos_symbol in self.positions.keys() if pos_symbol == symbol)
+            max_positions = self.config['ai_parameters']['max_positions_per_coin']
+            
+            if position_count >= max_positions:
+                return False
+            
+            # Check total exposure limit
+            current_exposure = self.calculate_total_exposure()
+            max_exposure = self.config['ai_parameters']['max_total_exposure_pct']
+            
+            if current_exposure >= max_exposure:
+                LOGGER.info("⏸️ MAX EXPOSURE REACHED: %.2f%% (Limit: %.2f%%) - Cannot open new position", 
+                           current_exposure * 100, max_exposure * 100)
+                return False
+            
+            return True
+        except Exception as e:
+            LOGGER.error("Error checking if can open new position: %s", e)
+            return False  # Fail safe - don't open new positions if there's an error
+    
+    def calculate_daily_loss_pct(self) -> float:
+        """Calculate daily loss percentage"""
+        if self.daily_start_balance <= 0:
+            return 0.0
+        
+        current_balance = self.fetch_account_balance()
+        if not current_balance or current_balance.get('equity', 0) <= 0:
+            return 0.0
+        
+        daily_loss_pct = (self.daily_start_balance - current_balance['equity']) / self.daily_start_balance
+        return max(0.0, daily_loss_pct)  # Return 0 if gain
+    
+    def initialize_daily_tracking(self):
+        """Initialize daily tracking at start of trading day"""
+        balance_info = self.fetch_account_balance()
+        if balance_info and balance_info.get('equity', 0) > 0:
+            self.daily_start_balance = balance_info['equity']
+            self.daily_pnl = 0.0
+            self.daily_trades = []
+            LOGGER.info("📊 DAILY TRACKING INITIALIZED: Starting balance: $%.2f", self.daily_start_balance)
+    
+    def close_position(self, symbol: str, reason: str = "Manual"):
+        """Close an existing position"""
+        if symbol not in self.positions:
+            return False
+        
+        try:
+            position = self.positions[symbol]
+            quantity = position['quantity']
+            
+            # Get current price
+            ticker = self.exchange.fetch_ticker(symbol)
+            current_price = ticker['last']
+            
+            # Place sell order
+            order = self.exchange.create_market_sell_order(symbol, quantity)
+            
+            # Calculate P&L
+            entry_price = position['avg_price']
+            pnl = (current_price - entry_price) * quantity
+            pnl_pct = (current_price - entry_price) / entry_price * 100
+            
+            # Log the trade
+            LOGGER.info("✅ POSITION CLOSED: %s - %s - Qty: %.6f, Entry: $%.2f, Exit: $%.2f, P&L: $%.2f (%.2f%%)", 
+                       symbol, reason, quantity, entry_price, current_price, pnl, pnl_pct)
+            
+            # Record in history
+            self.position_history.append({
+                'symbol': symbol,
+                'action': 'SELL',
+                'quantity': quantity,
+                'entry_price': entry_price,
+                'exit_price': current_price,
+                'pnl': pnl,
+                'pnl_pct': pnl_pct,
+                'reason': reason,
+                'timestamp': datetime.now(timezone.utc)
+            })
+            
+            # Update daily P&L and performance stats
+            self.daily_pnl += pnl
+            self.update_performance_stats(pnl, pnl_pct)
+            
+            # Remove from positions
+            del self.positions[symbol]
+            
+            return True
+            
+        except Exception as e:
+            LOGGER.error("Error closing position for %s: %s", symbol, e)
+            return False
+    
+    def update_position(self, symbol: str, quantity: float, price: float, 
+                       profit_target_pct: float, stop_loss_pct: float):
+        """Update or create position tracking with dynamic targets"""
+        if symbol in self.positions:
+            # Update existing position (average price)
+            existing = self.positions[symbol]
+            total_quantity = existing['quantity'] + quantity
+            total_value = (existing['quantity'] * existing['avg_price']) + (quantity * price)
+            new_avg_price = total_value / total_quantity
+            
+            # Update targets (use weighted average or keep original if better)
+            existing_profit_target = existing.get('profit_target_pct', profit_target_pct)
+            existing_stop_loss = existing.get('stop_loss_pct', stop_loss_pct)
+            
+            self.positions[symbol] = {
+                'quantity': total_quantity,
+                'avg_price': new_avg_price,
+                'entry_time': existing['entry_time'],  # Keep original entry time
+                'profit_target_pct': max(existing_profit_target, profit_target_pct),  # Use higher profit target
+                'stop_loss_pct': min(existing_stop_loss, stop_loss_pct),  # Use tighter stop loss
+                'stop_loss': price * (1 - stop_loss_pct),  # Keep for compatibility
+                'take_profit': price * (1 + profit_target_pct)  # Keep for compatibility
+            }
+        else:
+            # Create new position with dynamic targets
+            self.positions[symbol] = {
+                'quantity': quantity,
+                'avg_price': price,
+                'entry_time': datetime.now(timezone.utc),
+                'profit_target_pct': profit_target_pct,
+                'stop_loss_pct': stop_loss_pct,
+                'stop_loss': price * (1 - stop_loss_pct),  # Keep for compatibility
+                'take_profit': price * (1 + profit_target_pct),  # Keep for compatibility
+                'trailing_stop_active': False,
+                'trailing_stop_distance': stop_loss_pct,
+                'highest_price': price
+            }
+    
+    def check_all_positions(self):
+        """Check all existing positions for profit-taking and stop-loss"""
+        if not self.positions:
+            return
+        
+        positions_to_close = []
+        
+        for symbol, position in self.positions.items():
+            try:
+                # Get current price
+                ticker = self.exchange.fetch_ticker(symbol)
+                current_price = ticker['last']
+                
+                # Check profit-taking
+                if self.check_profit_taking(symbol, current_price):
+                    positions_to_close.append((symbol, "Profit Target"))
+                    continue
+                
+                # Check stop-loss
+                if self.check_stop_loss(symbol, current_price):
+                    positions_to_close.append((symbol, "Stop Loss"))
+                    continue
+                
+                # Update trailing stop
+                self.update_trailing_stop(symbol, current_price)
+                
+                # Log position status
+                entry_price = position['avg_price']
+                profit_pct = (current_price - entry_price) / entry_price * 100
+                trailing_status = " (Trailing)" if position.get('trailing_stop_active', False) else ""
+                LOGGER.info("📊 POSITION STATUS: %s - Entry: $%.2f, Current: $%.2f, P&L: %.2f%%%s", 
+                           symbol, entry_price, current_price, profit_pct, trailing_status)
+                
+            except Exception as e:
+                LOGGER.error("Error checking position %s: %s", symbol, e)
+        
+        # Close positions that need to be closed
+        for symbol, reason in positions_to_close:
+            self.close_position(symbol, reason)
+    
+    def update_trailing_stop(self, symbol: str, current_price: float):
+        """Update trailing stop for a position"""
+        if symbol not in self.positions:
+            return
+        
+        position = self.positions[symbol]
+        entry_price = position['avg_price']
+        profit_pct = (current_price - entry_price) / entry_price
+        
+        # Activate trailing stop when position is profitable
+        if profit_pct > 0.02:  # 2% profit threshold to activate trailing
+            if not position.get('trailing_stop_active', False):
+                position['trailing_stop_active'] = True
+                LOGGER.info("🎯 TRAILING STOP ACTIVATED: %s - Price: $%.2f, Profit: %.2f%%", 
+                           symbol, current_price, profit_pct * 100)
+            
+            # Update highest price
+            if current_price > position.get('highest_price', entry_price):
+                position['highest_price'] = current_price
+                
+                # Update trailing stop distance
+                trailing_distance = position.get('trailing_stop_distance', 0.02)
+                new_stop_price = current_price * (1 - trailing_distance)
+                
+                # Only move stop loss up, never down
+                if new_stop_price > position.get('stop_loss', entry_price * 0.98):
+                    position['stop_loss'] = new_stop_price
+                    position['stop_loss_pct'] = trailing_distance
+                    LOGGER.info("📈 TRAILING STOP UPDATED: %s - New Stop: $%.2f (Distance: %.2f%%)", 
+                               symbol, new_stop_price, trailing_distance * 100)
+    
+    def update_performance_stats(self, pnl: float, pnl_pct: float):
+        """Update performance statistics"""
+        self.performance_stats['total_trades'] += 1
+        self.performance_stats['total_pnl'] += pnl
+        
+        if pnl > 0:
+            self.performance_stats['winning_trades'] += 1
+        else:
+            self.performance_stats['losing_trades'] += 1
+        
+        # Calculate win rate
+        if self.performance_stats['total_trades'] > 0:
+            self.performance_stats['win_rate'] = (
+                self.performance_stats['winning_trades'] / self.performance_stats['total_trades']
+            )
+        
+        # Update max drawdown
+        if pnl < 0:
+            current_drawdown = abs(pnl_pct)
+            if current_drawdown > self.performance_stats['max_drawdown']:
+                self.performance_stats['max_drawdown'] = current_drawdown
+    
+    def log_performance_summary(self):
+        """Log performance summary"""
+        stats = self.performance_stats
+        exposure_pct = self.calculate_total_exposure() * 100
+        daily_loss_pct = self.calculate_daily_loss_pct() * 100
+        
+        LOGGER.info("📊 PERFORMANCE SUMMARY:")
+        LOGGER.info("   💰 Total Trades: %d | Win Rate: %.1f%% | Total P&L: $%.2f", 
+                   stats['total_trades'], stats['win_rate'] * 100, stats['total_pnl'])
+        LOGGER.info("   📈 Portfolio Exposure: %.1f%% | Daily Loss: %.1f%% | Max Drawdown: %.1f%%", 
+                   exposure_pct, daily_loss_pct, stats['max_drawdown'])
+        LOGGER.info("   🎯 Active Positions: %d | Daily P&L: $%.2f", 
+                   len(self.positions), self.daily_pnl)
+    
     def execute_trade(self, decision: TradingDecision):
-        """Execute trade based on AI decision"""
+        """Execute trade based on AI decision with profit-taking logic"""
         if decision.action == "HOLD" or decision.position_size_usd <= 0:
             return
         
@@ -542,11 +943,25 @@ class AITradingBot:
             ticker = self.exchange.fetch_ticker(decision.symbol)
             current_price = ticker['last']
             
-            # Calculate quantity based on position size
-            quantity = decision.position_size_usd / current_price
+            # Check existing positions for profit-taking or stop-loss
+            if decision.symbol in self.positions:
+                if self.check_profit_taking(decision.symbol, current_price):
+                    self.close_position(decision.symbol, "Profit Target")
+                    return
+                elif self.check_stop_loss(decision.symbol, current_price):
+                    self.close_position(decision.symbol, "Stop Loss")
+                    return
             
-            # Place order
+            # For BUY orders, check if we can open new position
             if decision.action == "BUY":
+                if not self.can_open_new_position(decision.symbol):
+                    LOGGER.info("⏸️ MAX POSITIONS REACHED: %s - Skipping new BUY order", decision.symbol)
+                    return
+                
+                # Calculate quantity based on position size
+                quantity = decision.position_size_usd / current_price
+                
+                # Place buy order
                 order = self.exchange.create_market_buy_order(
                     decision.symbol, 
                     quantity
@@ -554,13 +969,42 @@ class AITradingBot:
                 LOGGER.info("✅ BUY ORDER PLACED: %s - Qty: %.6f, Price: $%.2f", 
                            decision.symbol, quantity, current_price)
                 
-            elif decision.action == "SELL":
-                order = self.exchange.create_market_sell_order(
+                # Calculate dynamic targets for this specific trade
+                profit_target_pct, stop_loss_pct = self.calculate_dynamic_targets(
                     decision.symbol, 
-                    quantity
+                    decision.confidence, 
+                    decision.volatility,
+                    decision.market_regime,
+                    decision.risk_reward_ratio
                 )
-                LOGGER.info("✅ SELL ORDER PLACED: %s - Qty: %.6f, Price: $%.2f", 
-                           decision.symbol, quantity, current_price)
+                
+                # Update position tracking with dynamic targets
+                self.update_position(decision.symbol, quantity, current_price, 
+                                   profit_target_pct, stop_loss_pct)
+                
+                LOGGER.info("🎯 DYNAMIC TARGETS SET: %s - Profit: %.2f%%, Stop: %.2f%% (Confidence: %.2f, Volatility: %.4f)", 
+                           decision.symbol, profit_target_pct * 100, stop_loss_pct * 100, 
+                           decision.confidence, decision.volatility)
+                
+                # Record in history
+                self.position_history.append({
+                    'symbol': decision.symbol,
+                    'action': 'BUY',
+                    'quantity': quantity,
+                    'entry_price': current_price,
+                    'exit_price': None,
+                    'pnl': 0,
+                    'pnl_pct': 0,
+                    'reason': 'AI Decision',
+                    'timestamp': datetime.now(timezone.utc)
+                })
+                
+            elif decision.action == "SELL":
+                # Only sell if we have a position
+                if decision.symbol in self.positions:
+                    self.close_position(decision.symbol, "AI Sell Signal")
+                else:
+                    LOGGER.info("⏸️ NO POSITION TO SELL: %s - Skipping SELL order", decision.symbol)
             
             # Log the decision
             LOGGER.info("🤖 AI DECISION: %s %s - Confidence: %.2f, Size: $%.2f, SL: $%.2f, TP: $%.2f", 
@@ -581,6 +1025,9 @@ class AITradingBot:
         LOGGER.info("🧠 Starting AI-Powered Trading Bot (190 IQ)")
         LOGGER.info("🤖 Advanced Technical Analysis + Market Sentiment + Intelligent Position Sizing")
         
+        # Initialize daily tracking
+        self.initialize_daily_tracking()
+        
         # Send initial status
         self.send_ui_update({
             "status": "running",
@@ -596,9 +1043,16 @@ class AITradingBot:
             try:
                 LOGGER.info("🔍 AI Analyzing Market Conditions...")
                 
+                # First, check existing positions for profit-taking and stop-loss
+                self.check_all_positions()
+                
+                # Log performance stats every 10 minutes
+                if len(self.position_history) > 0 and len(self.position_history) % 10 == 0:
+                    self.log_performance_summary()
+                
                 # Analyze each coin with AI
                 current_analysis = []
-                active_trades = 0
+                active_trades = len(self.positions)
                 total_confidence = 0.0
                 
                 for coin_config in self.config['coins']:
