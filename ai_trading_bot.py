@@ -90,7 +90,7 @@ class AITradingBot:
                 {"symbol": "ADA/USDT", "enabled": True, "base_allocation": 0.1}
             ],
             "ai_parameters": {
-                "confidence_threshold": float(os.getenv("CONFIDENCE_THRESHOLD", "0.6")),
+                "confidence_threshold": float(os.getenv("CONFIDENCE_THRESHOLD", "0.49")),
                 "max_position_size_pct": float(os.getenv("MAX_POSITION_SIZE_PCT", "0.15")),  # Max 15% of portfolio per trade
                 "min_position_size_pct": float(os.getenv("MIN_POSITION_SIZE_PCT", "0.02")),  # Min 2% of portfolio per trade
                 "volatility_adjustment": True,
