@@ -127,9 +127,23 @@ class AITradingBot:
             "apiKey": api_config["api_key"],
             "secret": api_config["api_secret"],
             "enableRateLimit": True,
-            "options": {"defaultType": "unified"},
+            "options": {
+                "defaultType": "unified",
+                "recvWindow": 10000,  # Increase receive window
+                "timeDifference": 0,  # Let ccxt handle timestamp sync
+            },
         })
         self.exchange.set_sandbox_mode(True)  # Testnet mode
+        
+        # Test connection with a simple call
+        try:
+            balance = self.exchange.fetch_balance()
+            LOGGER.info("✅ Connected to Bybit API (Testnet) - Balance: $%.2f", 
+                       balance.get('total', {}).get('USDT', 0))
+        except Exception as e:
+            LOGGER.error("❌ API connection test failed: %s", e)
+            raise e
+        
         return self.exchange
     
     def fetch_account_balance(self):
