@@ -90,7 +90,7 @@ class AITradingBot:
                 {"symbol": "ADA/USDT", "enabled": True, "base_allocation": 0.1}
             ],
             "ai_parameters": {
-                "confidence_threshold": float(os.getenv("CONFIDENCE_THRESHOLD", "0.49")),
+                "confidence_threshold": float(os.getenv("CONFIDENCE_THRESHOLD", "0.34")),
                 "max_position_size_pct": float(os.getenv("MAX_POSITION_SIZE_PCT", "0.15")),  # Max 15% of portfolio per trade
                 "min_position_size_pct": float(os.getenv("MIN_POSITION_SIZE_PCT", "0.02")),  # Min 2% of portfolio per trade
                 "volatility_adjustment": True,
@@ -166,6 +166,66 @@ class AITradingBot:
         
         # Don't update balance if API fails - keep existing values
         return None
+    
+    def convert_stablecoins_to_usdt(self, required_amount: float) -> bool:
+        """Convert other stablecoins to USDT if USDT balance is insufficient"""
+        try:
+            if not self.exchange:
+                return False
+            
+            # Get current balance
+            balance = self.exchange.fetch_balance()
+            usdt_balance = balance.get('USDT', {}).get('free', 0.0)
+            
+            # If we have enough USDT, no conversion needed
+            if usdt_balance >= required_amount:
+                return True
+            
+            # List of stablecoins to check and convert
+            stablecoins = ['USDC', 'BUSD', 'DAI', 'TUSD', 'USDP']
+            converted_amount = 0.0
+            
+            for stablecoin in stablecoins:
+                if converted_amount >= required_amount:
+                    break
+                    
+                stablecoin_balance = balance.get(stablecoin, {}).get('free', 0.0)
+                if stablecoin_balance > 0:
+                    try:
+                        # Calculate how much we need to convert
+                        needed = min(required_amount - converted_amount, stablecoin_balance)
+                        
+                        # Create market sell order for stablecoin to USDT
+                        if stablecoin == 'USDC':
+                            # USDC/USDT pair
+                            order = self.exchange.create_market_sell_order(f'{stablecoin}/USDT', needed)
+                        else:
+                            # For other stablecoins, try direct conversion
+                            order = self.exchange.create_market_sell_order(f'{stablecoin}/USDT', needed)
+                        
+                        converted_amount += needed
+                        LOGGER.info("💰 CONVERTED %s to USDT: %.2f %s → USDT", stablecoin, needed, stablecoin)
+                        
+                    except Exception as e:
+                        LOGGER.warning("⚠️ Could not convert %s to USDT: %s", stablecoin, e)
+                        continue
+            
+            # Check if we now have enough USDT
+            updated_balance = self.exchange.fetch_balance()
+            new_usdt_balance = updated_balance.get('USDT', {}).get('free', 0.0)
+            
+            if new_usdt_balance >= required_amount:
+                LOGGER.info("✅ SUFFICIENT USDT AFTER CONVERSION: %.2f USDT (Required: %.2f)", 
+                           new_usdt_balance, required_amount)
+                return True
+            else:
+                LOGGER.warning("❌ INSUFFICIENT USDT AFTER CONVERSION: %.2f USDT (Required: %.2f)", 
+                              new_usdt_balance, required_amount)
+                return False
+                
+        except Exception as e:
+            LOGGER.error("Error converting stablecoins to USDT: %s", e)
+            return False
     
     def send_ui_update(self, update_data: Dict[str, Any]) -> None:
         """Send update to AI dashboard"""
@@ -974,6 +1034,16 @@ class AITradingBot:
                 
                 # Calculate quantity based on position size
                 quantity = decision.position_size_usd / current_price
+                
+                # Check if we have enough USDT, if not, try to convert stablecoins
+                required_usdt = decision.position_size_usd
+                balance_info = self.fetch_account_balance()
+                if balance_info and balance_info.get('free_balance', 0) < required_usdt:
+                    LOGGER.info("💰 INSUFFICIENT USDT: %.2f (Required: %.2f) - Attempting stablecoin conversion", 
+                               balance_info.get('free_balance', 0), required_usdt)
+                    if not self.convert_stablecoins_to_usdt(required_usdt):
+                        LOGGER.warning("❌ INSUFFICIENT FUNDS: Cannot convert enough stablecoins to USDT for trade")
+                        return
                 
                 # Place buy order
                 order = self.exchange.create_market_buy_order(

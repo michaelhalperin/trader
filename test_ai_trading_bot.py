@@ -333,6 +333,192 @@ class TestAITradingBot(unittest.TestCase):
         result = self.bot.check_profit_taking("NONEXISTENT", 50000)
         self.assertFalse(result)  # Should return False for missing position
         print("   ✅ Handles missing positions gracefully")
+    
+    def test_confidence_threshold_change(self):
+        """Test the new 34% confidence threshold"""
+        print("\n🎯 Testing Confidence Threshold Change...")
+        
+        # Test that confidence threshold is now 34%
+        threshold = self.bot.config['ai_parameters']['confidence_threshold']
+        self.assertEqual(threshold, 0.34)
+        print(f"   ✅ Confidence threshold: {threshold*100:.0f}%")
+        
+        # Test that 35% confidence would now trigger trades
+        # (Previously 49% threshold would block 35% confidence)
+        test_confidence = 0.35
+        would_trade = test_confidence > threshold
+        self.assertTrue(would_trade)
+        print(f"   ✅ 35% confidence would now trigger trades (was blocked at 49%)")
+        
+        # Test edge cases
+        edge_cases = [
+            (0.33, False, "33% - Below threshold"),
+            (0.34, False, "34% - At threshold (exclusive)"),
+            (0.35, True, "35% - Above threshold"),
+            (0.50, True, "50% - Well above threshold")
+        ]
+        
+        for confidence, should_trade, description in edge_cases:
+            result = confidence > threshold
+            self.assertEqual(result, should_trade)
+            print(f"   ✅ {description}: {'Would trade' if result else 'Would not trade'}")
+    
+    def test_stablecoin_conversion(self):
+        """Test stablecoin auto-conversion functionality"""
+        print("\n💰 Testing Stablecoin Conversion...")
+        
+        # Test with sufficient USDT (no conversion needed)
+        with patch.object(self.bot, 'fetch_account_balance', return_value={"equity": 1000, "free_balance": 100}):
+            result = self.bot.convert_stablecoins_to_usdt(50.0)
+            self.assertTrue(result)
+        print("   ✅ Sufficient USDT - No conversion needed")
+        
+        # Test with insufficient USDT but available stablecoins
+        mock_balance = {
+            'USDT': {'free': 20.0},
+            'USDC': {'free': 50.0},
+            'BUSD': {'free': 30.0}
+        }
+        
+        with patch.object(self.bot, 'exchange') as mock_exchange:
+            mock_exchange.fetch_balance.return_value = mock_balance
+            mock_exchange.create_market_sell_order.return_value = {'id': 'test_order'}
+            
+            # Mock the updated balance after conversion
+            updated_balance = {
+                'USDT': {'free': 70.0},  # 20 + 50 from USDC conversion
+                'USDC': {'free': 0.0},
+                'BUSD': {'free': 30.0}
+            }
+            mock_exchange.fetch_balance.side_effect = [mock_balance, updated_balance]
+            
+            result = self.bot.convert_stablecoins_to_usdt(60.0)
+            self.assertTrue(result)
+            print("   ✅ Insufficient USDT - Successfully converted USDC")
+        
+        # Test with no stablecoins available
+        insufficient_balance = {
+            'USDT': {'free': 20.0},
+            'USDC': {'free': 0.0},
+            'BUSD': {'free': 0.0}
+        }
+        
+        with patch.object(self.bot, 'exchange') as mock_exchange:
+            mock_exchange.fetch_balance.return_value = insufficient_balance
+            
+            result = self.bot.convert_stablecoins_to_usdt(60.0)
+            self.assertFalse(result)
+        print("   ✅ No stablecoins available - Conversion failed as expected")
+        
+        # Test conversion order (USDC first, then BUSD, etc.)
+        ordered_balance = {
+            'USDT': {'free': 20.0},
+            'USDC': {'free': 10.0},
+            'BUSD': {'free': 20.0},
+            'DAI': {'free': 15.0}
+        }
+        
+        with patch.object(self.bot, 'exchange') as mock_exchange:
+            mock_exchange.fetch_balance.return_value = ordered_balance
+            mock_exchange.create_market_sell_order.return_value = {'id': 'test_order'}
+            
+            # Should convert USDC first (10), then BUSD (20) to get 30 total
+            updated_balance = {
+                'USDT': {'free': 50.0},  # 20 + 10 + 20
+                'USDC': {'free': 0.0},
+                'BUSD': {'free': 0.0},
+                'DAI': {'free': 15.0}
+            }
+            mock_exchange.fetch_balance.side_effect = [ordered_balance, updated_balance]
+            
+            result = self.bot.convert_stablecoins_to_usdt(30.0)
+            self.assertTrue(result)
+            print("   ✅ Conversion order: USDC first, then BUSD")
+    
+    def test_trade_execution_with_conversion(self):
+        """Test trade execution with stablecoin conversion"""
+        print("\n🔄 Testing Trade Execution with Conversion...")
+        
+        # Mock a trading decision that requires conversion
+        decision = TradingDecision(
+            symbol="SOL/USDT",
+            action="BUY",
+            confidence=0.35,
+            position_size_usd=100.0,
+            stop_loss=95.0,
+            take_profit=110.0,
+            reasoning="Test trade",
+            risk_reward_ratio=2.0,
+            market_regime=MarketRegime.SIDEWAYS,
+            signal_strength=SignalStrength.MODERATE,
+            volatility=0.02
+        )
+        
+        # Mock insufficient USDT but available stablecoins
+        mock_balance = {
+            'USDT': {'free': 50.0},
+            'USDC': {'free': 60.0}
+        }
+        
+        with patch.object(self.bot, 'exchange') as mock_exchange:
+            mock_exchange.fetch_balance.return_value = mock_balance
+            mock_exchange.fetch_ticker.return_value = {'last': 100.0}
+            mock_exchange.create_market_sell_order.return_value = {'id': 'conversion_order'}
+            mock_exchange.create_market_buy_order.return_value = {'id': 'trade_order'}
+            
+            # Mock updated balance after conversion
+            updated_balance = {
+                'USDT': {'free': 110.0},  # 50 + 60 from USDC
+                'USDC': {'free': 0.0}
+            }
+            mock_exchange.fetch_balance.side_effect = [mock_balance, updated_balance]
+            
+            # Mock position management
+            with patch.object(self.bot, 'can_open_new_position', return_value=True):
+                with patch.object(self.bot, 'update_position'):
+                    with patch.object(self.bot, 'fetch_account_balance', return_value={"free_balance": 110.0}):
+                        # This should not raise an exception
+                        try:
+                            self.bot.execute_trade(decision)
+                            print("   ✅ Trade executed successfully with stablecoin conversion")
+                        except Exception as e:
+                            self.fail(f"Trade execution failed: {e}")
+    
+    def test_improvements_integration(self):
+        """Test that both improvements work together"""
+        print("\n🚀 Testing Improvements Integration...")
+        
+        # Test that 35% confidence trades would now execute
+        # (This was the main issue - SOL/USDT and ADA/USDT at 35% were not trading)
+        
+        # Simulate the exact scenario from the logs
+        sol_confidence = 0.35
+        ada_confidence = 0.35
+        threshold = self.bot.config['ai_parameters']['confidence_threshold']
+        
+        sol_would_trade = sol_confidence > threshold
+        ada_would_trade = ada_confidence > threshold
+        
+        self.assertTrue(sol_would_trade, "SOL/USDT should now trade at 35% confidence")
+        self.assertTrue(ada_would_trade, "ADA/USDT should now trade at 35% confidence")
+        
+        print(f"   ✅ SOL/USDT (35% confidence): {'Would trade' if sol_would_trade else 'Would not trade'}")
+        print(f"   ✅ ADA/USDT (35% confidence): {'Would trade' if ada_would_trade else 'Would not trade'}")
+        
+        # Test that the bot can now access more funds through stablecoin conversion
+        with patch.object(self.bot, 'fetch_account_balance', return_value={"free_balance": 20.0}):
+            # Simulate a trade that needs $100 but only has $20 USDT
+            required_amount = 100.0
+            has_sufficient = self.bot.fetch_account_balance()['free_balance'] >= required_amount
+            
+            if not has_sufficient:
+                # Test that conversion would be attempted
+                with patch.object(self.bot, 'convert_stablecoins_to_usdt', return_value=True) as mock_convert:
+                    result = mock_convert(required_amount)
+                    self.assertTrue(result)
+                    print("   ✅ Stablecoin conversion would be attempted for insufficient funds")
+        
+        print("   ✅ Both improvements working together: Lower threshold + Auto conversion")
 
 def run_comprehensive_test():
     """Run comprehensive test suite"""

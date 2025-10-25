@@ -1,0 +1,60 @@
+test_confidence_threshold_change (__main__.TestAITradingBot)
+Test the new 34% confidence threshold ... FAIL
+test_daily_loss_limits (__main__.TestAITradingBot)
+Test daily loss limit functionality ... ok
+test_daily_tracking_initialization (__main__.TestAITradingBot)
+Test daily tracking initialization ... ok
+test_dynamic_target_calculation (__main__.TestAITradingBot)
+Test dynamic profit target and stop-loss calculation ... ok
+test_error_handling (__main__.TestAITradingBot)
+Test error handling in various scenarios ... ok
+test_improvements_integration (__main__.TestAITradingBot)
+Test that both improvements work together ... FAIL
+test_performance_tracking (__main__.TestAITradingBot)
+Test performance tracking and statistics ... ok
+test_portfolio_risk_management (__main__.TestAITradingBot)
+Test portfolio risk management features ... ok
+test_position_management (__main__.TestAITradingBot)
+Test position creation and updates ... ok
+test_profit_taking_logic (__main__.TestAITradingBot)
+Test profit-taking and stop-loss logic ... ok
+test_stablecoin_conversion (__main__.TestAITradingBot)
+Test stablecoin auto-conversion functionality ... FAIL
+test_trade_execution_with_conversion (__main__.TestAITradingBot)
+Test trade execution with stablecoin conversion ... ok
+test_trailing_stops (__main__.TestAITradingBot)
+Test trailing stop functionality ... ok
+test_ui_data_integration (__main__.TestAITradingBot)
+Test UI data integration ... ok
+
+======================================================================
+FAIL: test_confidence_threshold_change (__main__.TestAITradingBot)
+Test the new 34% confidence threshold
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/michael/Desktop/code/bybit_trader/test_ai_trading_bot.py", line 343, in test_confidence_threshold_change
+    self.assertEqual(threshold, 0.34)
+AssertionError: 0.6 != 0.34
+
+======================================================================
+FAIL: test_improvements_integration (__main__.TestAITradingBot)
+Test that both improvements work together
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/michael/Desktop/code/bybit_trader/test_ai_trading_bot.py", line 502, in test_improvements_integration
+    self.assertTrue(sol_would_trade, "SOL/USDT should now trade at 35% confidence")
+AssertionError: False is not true : SOL/USDT should now trade at 35% confidence
+
+======================================================================
+FAIL: test_stablecoin_conversion (__main__.TestAITradingBot)
+Test stablecoin auto-conversion functionality
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/michael/Desktop/code/bybit_trader/test_ai_trading_bot.py", line 373, in test_stablecoin_conversion
+    self.assertTrue(result)
+AssertionError: False is not true
+
+----------------------------------------------------------------------
+Ran 14 tests in 0.012s
+
+FAILED (failures=3)
