@@ -169,7 +169,7 @@ class AITradingBot:
         return None
     
     def convert_stablecoins_to_usdt(self, required_amount: float) -> bool:
-        """Convert other stablecoins to USDT if USDT balance is insufficient"""
+        """Convert any available cryptocurrency to USDT if USDT balance is insufficient"""
         try:
             if not self.exchange:
                 return False
@@ -182,28 +182,41 @@ class AITradingBot:
             if usdt_balance >= required_amount:
                 return True
             
-            # List of stablecoins to check and convert
-            stablecoins = ['USDC', 'BUSD', 'DAI', 'TUSD', 'USDP']
+            # List of cryptocurrencies to check and convert (ordered by preference)
+            # Priority: Stablecoins first (1:1 rate), then major cryptos
+            crypto_assets = [
+                # Stablecoins (1:1 conversion rate)
+                'USDC', 'BUSD', 'DAI', 'TUSD', 'USDP',
+                # Major cryptocurrencies (market rate conversion)
+                'BTC', 'ETH', 'SOL', 'ADA', 'BNB', 'XRP', 'DOGE', 'MATIC', 'AVAX', 'DOT',
+                'LINK', 'UNI', 'LTC', 'ATOM', 'NEAR', 'FTM', 'ALGO', 'VET', 'ICP', 'FIL'
+            ]
+            
             converted_amount = 0.0
             
-            for stablecoin in stablecoins:
+            for crypto in crypto_assets:
                 if converted_amount >= required_amount:
                     break
                     
-                stablecoin_balance = balance.get(stablecoin, {}).get('free', 0.0)
-                if stablecoin_balance > 0:
+                crypto_balance = balance.get(crypto, {}).get('free', 0.0)
+                if crypto_balance > 0:
                     try:
                         # Calculate how much we need to convert
-                        needed = min(required_amount - converted_amount, stablecoin_balance)
+                        needed = min(required_amount - converted_amount, crypto_balance)
                         
-                        # Create market sell order for stablecoin to USDT
-                        order = self.exchange.create_market_sell_order(f'{stablecoin}/USDT', needed)
+                        # Create market sell order for crypto to USDT
+                        order = self.exchange.create_market_sell_order(f'{crypto}/USDT', needed)
                         
                         converted_amount += needed
-                        LOGGER.info("💰 CONVERTED %s to USDT: %.2f %s → USDT", stablecoin, needed, stablecoin)
+                        
+                        # Log conversion with appropriate rate info
+                        if crypto in ['USDC', 'BUSD', 'DAI', 'TUSD', 'USDP']:
+                            LOGGER.info("💰 CONVERTED %s to USDT: %.2f %s → USDT (Rate: 1:1)", crypto, needed, crypto)
+                        else:
+                            LOGGER.info("💰 CONVERTED %s to USDT: %.6f %s → USDT (Market Rate)", crypto, needed, crypto)
                         
                     except Exception as e:
-                        LOGGER.warning("⚠️ Could not convert %s to USDT: %s", stablecoin, e)
+                        LOGGER.warning("⚠️ Could not convert %s to USDT: %s", crypto, e)
                         continue
             
             # Check if we now have enough USDT
@@ -220,11 +233,11 @@ class AITradingBot:
                 return False
                 
         except Exception as e:
-            LOGGER.error("Error converting stablecoins to USDT: %s", e)
+            LOGGER.error("Error converting cryptocurrencies to USDT: %s", e)
             return False
 
     def maintain_margin_balance(self, target_usdt: float = 1000.0) -> bool:
-        """Ensure we always have target USDT amount in margin by converting stablecoins"""
+        """Ensure we always have target USDT amount in margin by converting any available cryptocurrency"""
         try:
             if not self.exchange:
                 return False
@@ -243,29 +256,43 @@ class AITradingBot:
             LOGGER.info("💰 MARGIN MAINTENANCE: Current USDT: $%.2f, Target: $%.2f, Need: $%.2f", 
                        usdt_balance, target_usdt, needed_amount)
             
-            # List of stablecoins to check and convert (ordered by preference)
-            stablecoins = ['USDC', 'BUSD', 'DAI', 'TUSD', 'USDP']
+            # List of cryptocurrencies to check and convert (ordered by preference)
+            # Priority: Stablecoins first (1:1 rate), then major cryptos
+            crypto_assets = [
+                # Stablecoins (1:1 conversion rate)
+                'USDC', 'BUSD', 'DAI', 'TUSD', 'USDP',
+                # Major cryptocurrencies (market rate conversion)
+                'BTC', 'ETH', 'SOL', 'ADA', 'BNB', 'XRP', 'DOGE', 'MATIC', 'AVAX', 'DOT',
+                'LINK', 'UNI', 'LTC', 'ATOM', 'NEAR', 'FTM', 'ALGO', 'VET', 'ICP', 'FIL'
+            ]
+            
             converted_amount = 0.0
             
-            for stablecoin in stablecoins:
+            for crypto in crypto_assets:
                 if converted_amount >= needed_amount:
                     break
                     
-                stablecoin_balance = balance.get(stablecoin, {}).get('free', 0.0)
-                if stablecoin_balance > 0:
+                crypto_balance = balance.get(crypto, {}).get('free', 0.0)
+                if crypto_balance > 0:
                     try:
-                        # Calculate how much we need to convert from this stablecoin
-                        amount_to_convert = min(needed_amount - converted_amount, stablecoin_balance)
+                        # Calculate how much we need to convert from this crypto
+                        amount_to_convert = min(needed_amount - converted_amount, crypto_balance)
                         
-                        # Create market sell order for stablecoin to USDT
-                        order = self.exchange.create_market_sell_order(f'{stablecoin}/USDT', amount_to_convert)
+                        # Create market sell order for crypto to USDT
+                        order = self.exchange.create_market_sell_order(f'{crypto}/USDT', amount_to_convert)
                         
                         converted_amount += amount_to_convert
-                        LOGGER.info("💰 MARGIN CONVERSION: %.2f %s → USDT (Rate: 1:1)", 
-                                   amount_to_convert, stablecoin)
+                        
+                        # Log conversion with appropriate rate info
+                        if crypto in ['USDC', 'BUSD', 'DAI', 'TUSD', 'USDP']:
+                            LOGGER.info("💰 MARGIN CONVERSION: %.6f %s → USDT (Rate: 1:1)", 
+                                       amount_to_convert, crypto)
+                        else:
+                            LOGGER.info("💰 MARGIN CONVERSION: %.6f %s → USDT (Market Rate)", 
+                                       amount_to_convert, crypto)
                         
                     except Exception as e:
-                        LOGGER.warning("⚠️ Could not convert %s to USDT for margin: %s", stablecoin, e)
+                        LOGGER.warning("⚠️ Could not convert %s to USDT for margin: %s", crypto, e)
                         continue
             
             # Check final balance

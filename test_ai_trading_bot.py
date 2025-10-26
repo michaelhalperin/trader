@@ -367,14 +367,14 @@ class TestAITradingBot(unittest.TestCase):
             print(f"   ✅ {description}: {'Would trade' if result else 'Would not trade'}")
     
     def test_stablecoin_conversion(self):
-        """Test stablecoin auto-conversion functionality"""
-        print("\n💰 Testing Stablecoin Conversion...")
+        """Test cryptocurrency auto-conversion functionality"""
+        print("\n💰 Testing Cryptocurrency Conversion...")
         
         # Test with sufficient USDT (no conversion needed)
         sufficient_balance = {
             'USDT': {'free': 100.0},
             'USDC': {'free': 0.0},
-            'BUSD': {'free': 0.0}
+            'BTC': {'free': 0.0}
         }
         
         with patch.object(self.bot, 'exchange') as mock_exchange:
@@ -384,11 +384,11 @@ class TestAITradingBot(unittest.TestCase):
             self.assertTrue(result)
         print("   ✅ Sufficient USDT - No conversion needed")
         
-        # Test with insufficient USDT but available stablecoins
+        # Test with insufficient USDT but available BTC
         mock_balance = {
             'USDT': {'free': 20.0},
-            'USDC': {'free': 50.0},
-            'BUSD': {'free': 30.0}
+            'BTC': {'free': 0.01},  # ~$1000 worth
+            'ETH': {'free': 0.0}
         }
         
         with patch.object(self.bot, 'exchange') as mock_exchange:
@@ -397,21 +397,21 @@ class TestAITradingBot(unittest.TestCase):
             
             # Mock the updated balance after conversion
             updated_balance = {
-                'USDT': {'free': 70.0},  # 20 + 50 from USDC conversion
-                'USDC': {'free': 0.0},
-                'BUSD': {'free': 30.0}
+                'USDT': {'free': 1020.0},  # 20 + 1000 from BTC conversion
+                'BTC': {'free': 0.0},
+                'ETH': {'free': 0.0}
             }
             mock_exchange.fetch_balance.side_effect = [mock_balance, updated_balance]
             
             result = self.bot.convert_stablecoins_to_usdt(60.0)
             self.assertTrue(result)
-        print("   ✅ Insufficient USDT - Successfully converted USDC")
+        print("   ✅ Insufficient USDT - Successfully converted BTC")
         
-        # Test with no stablecoins available
+        # Test with no cryptocurrencies available
         insufficient_balance = {
             'USDT': {'free': 20.0},
-            'USDC': {'free': 0.0},
-            'BUSD': {'free': 0.0}
+            'BTC': {'free': 0.0},
+            'ETH': {'free': 0.0}
         }
         
         with patch.object(self.bot, 'exchange') as mock_exchange:
@@ -419,32 +419,32 @@ class TestAITradingBot(unittest.TestCase):
             
             result = self.bot.convert_stablecoins_to_usdt(60.0)
             self.assertFalse(result)
-        print("   ✅ No stablecoins available - Conversion failed as expected")
+        print("   ✅ No cryptocurrencies available - Conversion failed as expected")
         
-        # Test conversion order (USDC first, then BUSD, etc.)
+        # Test conversion order (stablecoins first, then major cryptos)
         ordered_balance = {
             'USDT': {'free': 20.0},
             'USDC': {'free': 10.0},
-            'BUSD': {'free': 20.0},
-            'DAI': {'free': 15.0}
+            'BTC': {'free': 0.005},  # ~$500 worth
+            'ETH': {'free': 0.1}     # ~$400 worth
         }
         
         with patch.object(self.bot, 'exchange') as mock_exchange:
             mock_exchange.fetch_balance.return_value = ordered_balance
             mock_exchange.create_market_sell_order.return_value = {'id': 'test_order'}
             
-            # Should convert USDC first (10), then BUSD (20) to get 30 total
+            # Should convert USDC first (10), then BTC (0.005) to get enough
             updated_balance = {
-                'USDT': {'free': 50.0},  # 20 + 10 + 20
+                'USDT': {'free': 530.0},  # 20 + 10 + 500
                 'USDC': {'free': 0.0},
-                'BUSD': {'free': 0.0},
-                'DAI': {'free': 15.0}
+                'BTC': {'free': 0.0},
+                'ETH': {'free': 0.1}
             }
             mock_exchange.fetch_balance.side_effect = [ordered_balance, updated_balance]
             
             result = self.bot.convert_stablecoins_to_usdt(30.0)
             self.assertTrue(result)
-        print("   ✅ Conversion order: USDC first, then BUSD")
+        print("   ✅ Conversion order: Stablecoins first, then major cryptos")
     
     def test_trade_execution_with_conversion(self):
         """Test trade execution with stablecoin conversion"""
@@ -502,8 +502,8 @@ class TestAITradingBot(unittest.TestCase):
         # Test with sufficient USDT (no conversion needed)
         sufficient_balance = {
             'USDT': {'free': 1200.0},
-            'USDC': {'free': 0.0},
-            'BUSD': {'free': 0.0}
+            'BTC': {'free': 0.0},
+            'ETH': {'free': 0.0}
         }
         
         with patch.object(self.bot, 'exchange') as mock_exchange:
@@ -513,11 +513,11 @@ class TestAITradingBot(unittest.TestCase):
             self.assertTrue(result)
         print("   ✅ Sufficient USDT - No conversion needed")
         
-        # Test with insufficient USDT but available stablecoins
+        # Test with insufficient USDT but available BTC
         mock_balance = {
             'USDT': {'free': 500.0},
-            'USDC': {'free': 300.0},
-            'BUSD': {'free': 200.0}
+            'BTC': {'free': 0.01},  # ~$1000 worth
+            'ETH': {'free': 0.0}
         }
         
         with patch.object(self.bot, 'exchange') as mock_exchange:
@@ -526,21 +526,21 @@ class TestAITradingBot(unittest.TestCase):
             
             # Mock the updated balance after conversion
             updated_balance = {
-                'USDT': {'free': 1000.0},  # 500 + 300 + 200
-                'USDC': {'free': 0.0},
-                'BUSD': {'free': 0.0}
+                'USDT': {'free': 1500.0},  # 500 + 1000 from BTC conversion
+                'BTC': {'free': 0.0},
+                'ETH': {'free': 0.0}
             }
             mock_exchange.fetch_balance.side_effect = [mock_balance, updated_balance]
             
             result = self.bot.maintain_margin_balance(1000.0)
             self.assertTrue(result)
-        print("   ✅ Insufficient USDT - Successfully converted stablecoins")
+        print("   ✅ Insufficient USDT - Successfully converted BTC")
         
-        # Test with no stablecoins available
+        # Test with no cryptocurrencies available
         insufficient_balance = {
             'USDT': {'free': 500.0},
-            'USDC': {'free': 0.0},
-            'BUSD': {'free': 0.0}
+            'BTC': {'free': 0.0},
+            'ETH': {'free': 0.0}
         }
         
         with patch.object(self.bot, 'exchange') as mock_exchange:
@@ -548,7 +548,32 @@ class TestAITradingBot(unittest.TestCase):
             
             result = self.bot.maintain_margin_balance(1000.0)
             self.assertFalse(result)
-        print("   ✅ No stablecoins available - Conversion failed as expected")
+        print("   ✅ No cryptocurrencies available - Conversion failed as expected")
+        
+        # Test conversion priority (stablecoins first, then major cryptos)
+        priority_balance = {
+            'USDT': {'free': 200.0},
+            'USDC': {'free': 300.0},
+            'BTC': {'free': 0.01},  # ~$1000 worth
+            'ETH': {'free': 0.5}    # ~$2000 worth
+        }
+        
+        with patch.object(self.bot, 'exchange') as mock_exchange:
+            mock_exchange.fetch_balance.return_value = priority_balance
+            mock_exchange.create_market_sell_order.return_value = {'id': 'test_order'}
+            
+            # Should convert USDC first (300), then BTC (0.01) to get 1000+ total
+            updated_balance = {
+                'USDT': {'free': 1500.0},  # 200 + 300 + 1000
+                'USDC': {'free': 0.0},
+                'BTC': {'free': 0.0},
+                'ETH': {'free': 0.5}
+            }
+            mock_exchange.fetch_balance.side_effect = [priority_balance, updated_balance]
+            
+            result = self.bot.maintain_margin_balance(1000.0)
+            self.assertTrue(result)
+        print("   ✅ Conversion priority: Stablecoins first, then major cryptos")
         
         # Test configurable target margin
         target_margin = self.bot.config['ai_parameters']['target_margin_usdt']
