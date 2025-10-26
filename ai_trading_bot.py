@@ -99,6 +99,7 @@ class AITradingBot:
                 "max_positions_per_coin": int(os.getenv("MAX_POSITIONS_PER_COIN", "2")),  # Max 2 positions per coin
                 "max_total_exposure_pct": float(os.getenv("MAX_TOTAL_EXPOSURE_PCT", "0.8")),  # Max 80% of account in positions
                 "max_daily_loss_pct": float(os.getenv("MAX_DAILY_LOSS_PCT", "0.05")),  # Max 5% daily loss
+                "target_margin_usdt": float(os.getenv("TARGET_MARGIN_USDT", "1000.0")),  # Target USDT margin
                 "correlation_limit": 0.7,
                 "trend_strength_weight": 0.3,
                 "volume_weight": 0.2,
@@ -196,12 +197,7 @@ class AITradingBot:
                         needed = min(required_amount - converted_amount, stablecoin_balance)
                         
                         # Create market sell order for stablecoin to USDT
-                        if stablecoin == 'USDC':
-                            # USDC/USDT pair
-                            order = self.exchange.create_market_sell_order(f'{stablecoin}/USDT', needed)
-                        else:
-                            # For other stablecoins, try direct conversion
-                            order = self.exchange.create_market_sell_order(f'{stablecoin}/USDT', needed)
+                        order = self.exchange.create_market_sell_order(f'{stablecoin}/USDT', needed)
                         
                         converted_amount += needed
                         LOGGER.info("💰 CONVERTED %s to USDT: %.2f %s → USDT", stablecoin, needed, stablecoin)
@@ -225,6 +221,68 @@ class AITradingBot:
                 
         except Exception as e:
             LOGGER.error("Error converting stablecoins to USDT: %s", e)
+            return False
+
+    def maintain_margin_balance(self, target_usdt: float = 1000.0) -> bool:
+        """Ensure we always have target USDT amount in margin by converting stablecoins"""
+        try:
+            if not self.exchange:
+                return False
+            
+            # Get current balance
+            balance = self.exchange.fetch_balance()
+            usdt_balance = balance.get('USDT', {}).get('free', 0.0)
+            
+            # If we already have enough USDT, no action needed
+            if usdt_balance >= target_usdt:
+                return True
+            
+            # Calculate how much we need to convert
+            needed_amount = target_usdt - usdt_balance
+            
+            LOGGER.info("💰 MARGIN MAINTENANCE: Current USDT: $%.2f, Target: $%.2f, Need: $%.2f", 
+                       usdt_balance, target_usdt, needed_amount)
+            
+            # List of stablecoins to check and convert (ordered by preference)
+            stablecoins = ['USDC', 'BUSD', 'DAI', 'TUSD', 'USDP']
+            converted_amount = 0.0
+            
+            for stablecoin in stablecoins:
+                if converted_amount >= needed_amount:
+                    break
+                    
+                stablecoin_balance = balance.get(stablecoin, {}).get('free', 0.0)
+                if stablecoin_balance > 0:
+                    try:
+                        # Calculate how much we need to convert from this stablecoin
+                        amount_to_convert = min(needed_amount - converted_amount, stablecoin_balance)
+                        
+                        # Create market sell order for stablecoin to USDT
+                        order = self.exchange.create_market_sell_order(f'{stablecoin}/USDT', amount_to_convert)
+                        
+                        converted_amount += amount_to_convert
+                        LOGGER.info("💰 MARGIN CONVERSION: %.2f %s → USDT (Rate: 1:1)", 
+                                   amount_to_convert, stablecoin)
+                        
+                    except Exception as e:
+                        LOGGER.warning("⚠️ Could not convert %s to USDT for margin: %s", stablecoin, e)
+                        continue
+            
+            # Check final balance
+            updated_balance = self.exchange.fetch_balance()
+            final_usdt_balance = updated_balance.get('USDT', {}).get('free', 0.0)
+            
+            if final_usdt_balance >= target_usdt:
+                LOGGER.info("✅ MARGIN MAINTAINED: $%.2f USDT available (Target: $%.2f)", 
+                           final_usdt_balance, target_usdt)
+                return True
+            else:
+                LOGGER.warning("⚠️ MARGIN INSUFFICIENT: $%.2f USDT available (Target: $%.2f)", 
+                              final_usdt_balance, target_usdt)
+                return False
+                
+        except Exception as e:
+            LOGGER.error("Error maintaining margin balance: %s", e)
             return False
     
     def send_ui_update(self, update_data: Dict[str, Any]) -> None:
@@ -1127,7 +1185,11 @@ class AITradingBot:
             try:
                 LOGGER.info("🔍 AI Analyzing Market Conditions...")
                 
-                # First, check existing positions for profit-taking and stop-loss
+                # First, ensure we maintain target USDT margin by converting stablecoins
+                target_margin = self.config['ai_parameters']['target_margin_usdt']
+                self.maintain_margin_balance(target_margin)
+                
+                # Check existing positions for profit-taking and stop-loss
                 self.check_all_positions()
                 
                 # Log performance stats every 10 minutes
